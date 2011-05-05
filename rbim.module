@@ -1,0 +1,148 @@
+<?php
+
+/**
+ * Implments the hook_menu() function.
+ */
+function rbim_menu() {
+
+  $items = array();
+
+  $items['admin/settings/rbim'] = array(
+    'title' => 'Background Manager',
+    'description' => t('Use this option to manage background images.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('rbim_admin_form'),
+    'access arguments' => array('background manager'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+function rbim_perm() {
+  return array('background manager');
+}
+
+/**
+ * This is the form that allows user to upload images to the /files/backrounds folder.
+ *
+ * @param $settings
+ */
+function rbim_admin_form($settings) {
+
+  // Define the settings-related FormAPI elements.
+  $form = array();
+
+  $form['backgrounduploader'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Upload Images',
+    '#description' => t('This option provides the ability to upload an image to the backgrounds folder. Any image
+    in the files/backgrounds folder will be used by the CSS rotator.php file for the background of the site.'),
+  );
+
+  $form['#attributes'] = array('enctype' => "multipart/form-data");
+
+  $form['backgrounduploader']['background_image'] = array(
+    '#type' => 'file',
+    '#title' => t('Image Uploader'),
+    '#description' => t('Use this option to upload an image to the theme background image folder.'),
+    '#maxlength' => 40,
+  );
+
+  $form['backgrounduploader']['uploadbutton'] = array(
+    '#type' => 'submit',
+    '#value' => 'Upload Image File',
+  );
+
+  //-------------------------------------------------
+  $background_folder = file_create_path('rbim-backgrounds/thumbs');
+  file_check_directory($background_folder, FILE_CREATE_DIRECTORY, 'file_directory_path');
+
+  $sql = 'select * from {files} where filepath like \'%ackgrounds%\' order by timestamp  desc';
+  $result = db_query($sql);
+  $options = array();
+  while ($rec = db_fetch_array($result)) {
+    $thumb = rbim_get_thumbnail($rec);
+    $options[$rec['fid']] = $rec['filename'] . ' (' . $rec['filepath'] . ')<br>' . theme_image($thumb, $alt = '', $title = '');
+  }
+
+  $form['backgrounds'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Background Images',
+  );
+
+  $form['backgrounds']['backgroundfids'] = array(
+    '#type' => 'checkboxes',
+    '#options' => $options,
+  );
+
+  $form['backgrounds']['deletebutton'] = array(
+    '#type' => 'submit',
+    '#value' => 'Delete Selected',
+  );
+
+  return $form;
+}
+
+/**
+ * This is the submit function for the background image management folder.
+ * This will eiter upload new images, or allow the user to remove the old
+ * images.
+ *
+ * @param $form_id
+ * @param $form_state
+ */
+function rbim_admin_form_submit($form_id, $form_state) {
+
+  if ($form_state['clicked_button']['#value']=='Delete Selected') {
+    $backgroundfids = $form_state['values']['backgroundfids'];
+    foreach ($backgroundfids as $key) {
+      if ($backgroundfids[$key]) {
+        $file = db_fetch_object(db_query('select * from {files} where fid = %d', $key));
+        db_query('DELETE FROM {files} WHERE fid = %d', $file->fid);
+        file_delete($file->filepath);
+      }
+    }
+  }
+
+  if ($form_state['clicked_button']['#value']=='Upload Image File') {
+
+    $background_folder = file_create_path('rbim-backgrounds');
+    file_check_directory($background_folder, FILE_CREATE_DIRECTORY, 'file_directory_path');
+
+    if ($file = file_save_upload('background_image', array('file_validate_is_image' => array() ), $background_folder) ) {
+      $parts = pathinfo($file->filename);
+
+      // Remember to set this value or the cron will delete the temp files in the files tables.
+      file_set_status($file, 1);
+      drupal_set_message('The background file: ' . $file->filename . ' was successfully uploaded');
+    }
+
+  }
+
+}
+
+/**
+ * This is helper function that will build the thumb folder
+ * for the background images.
+ *
+ * @param unknown_type $file
+ */
+function rbim_get_thumbnail( $file ) {
+
+  $background_folder = file_create_path('rbim-backgrounds/thumbs');
+  $thumbnailfile = $background_folder . '/' . $file['filename'];
+
+  image_resize( $file['filepath'], $thumbnailfile, 50, 50);
+
+  return $thumbnailfile;
+}
+
+function rbim_init() {
+
+  $path = drupal_get_path('module', 'rbim') . '/rbim.css';
+  $media = 'all';
+  $preprocess = FALSE;
+
+  drupal_add_css($path, 'theme', $media, $preprocess);
+}

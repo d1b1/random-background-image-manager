@@ -1,0 +1,6 @@
+name = Random Background Image Manager
+description = Provide random background images and a file manager.
+core = 6.x
+version = 6.x-0.1
+
+dependencies[] = imageapi

@@ -1,0 +1,7 @@
+body
+{	
+	background : #dddddd url(rotator.php) no-repeat 50% 0 !important;
+	background-attachment: fixed;
+}
+
+#content {background-color: #FFFFFF; }
