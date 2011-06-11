@@ -1,4 +1,6 @@
 <?php
+// Written by d1b1 (Stephan Smith Stephan.Smith.bc93@gmail.com)
+// Last Update: 6/11/2011
 
 /**
  * Implments the hook_menu() function.
@@ -8,20 +10,94 @@ function rbim_menu() {
   $items = array();
 
   $items['admin/settings/rbim'] = array(
-    'title' => 'Background Manager',
-    'description' => t('Use this option to manage background images.'),
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('rbim_admin_form'),
+    'title'              => 'Background Manager',
+    'description'        => t('Use this option to manage background images.'),
+    'page callback'      => 'drupal_get_form',
+    'page arguments'     => array('rbim_admin_form'),
+    'access arguments'   => array('background manager'),
+    'type'               => MENU_NORMAL_ITEM,
+  );
+
+  $items['admin/settings/rbim/jquery'] = array(
+    'title'            => 'jQuery Options',
+    'description'      => t('Use this option to manage background images.'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('rbim_admin_jquery_form'),
     'access arguments' => array('background manager'),
-    'type' => MENU_NORMAL_ITEM,
+    'type'             => MENU_NORMAL_ITEM,
   );
 
   return $items;
 }
 
+/**
+ * This is the form that allows user to upload images to the /files/backrounds folder.
+ *
+ * @param $settings
+ */
+function rbim_admin_jquery_form($settings) {
+
+  $form = array();
+
+  if (!module_exists('jquery_plugin')) {
+    drupal_set_message(t('Sorry you need to enable the jquery_plugin module.'));
+    return $form;
+  }
+
+  $form['back_options'] = array(
+    '#type'        => 'fieldset',
+    '#title'       => 'Options',
+    '#description' => t('These option provide the ability to enable and configure jquery effects
+    for the background images.'),
+  );
+
+  $form['back_options']['rbim_enable_jquery'] = array(
+    '#type'           => 'checkbox',
+    '#title'          => t('Enable in backgroud image rotation after load?'),
+    '#default_value'  => variable_get('rbim_enable_jquery', FALSE),
+    '#description'    => t('Enable jquery to continue the rotate of background images.'),
+  );
+
+  $form['back_options']['rbim_cycle_time'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Milliseconds between image cycle'),
+    '#default_value'  => variable_get('rbim_cycle_time', 5000),
+    '#description'    => t('Enter the time between image changes in seconds.'),
+  );
+
+  return system_settings_form($form);
+}
+
+function _rbim_jquery_image_cycle() {
+
+  if (variable_get('rbim_enable_jquery', FALSE)==TRUE) {
+
+    $files = file_scan_directory('sites/default/files/rbim-backgrounds', "\.jpg$", array('.', '..' ), 0, FALSE );
+
+    drupal_add_js(array( 'rbim_time' => variable_get('rbim_cycle_time', 5000), 'rbim_imgs' => array_keys($files)) , 'setting');
+
+    $d = "$(document).ready(function(){
+          var i = 0;
+          var rotateBg = setInterval(function(){
+            $('body').css('background', '#dddddd url(' + Drupal.settings.basePath +  Drupal.settings.rbim_imgs[i] + ') no-repeat 50% 0 !important');
+            i++;
+            if(i>=(Drupal.settings.rbim_imgs.length-1)) i=0;
+          }, Drupal.settings.rbim_time);
+
+         });
+         ";
+
+    //$plugin = 'cycle';
+    //jquery_plugin_add('cycle');
+
+    drupal_add_js($d, 'inline');
+  }
+}
+
 function rbim_perm() {
   return array('background manager');
 }
+
 
 /**
  * This is the form that allows user to upload images to the /files/backrounds folder.
@@ -34,8 +110,8 @@ function rbim_admin_form($settings) {
   $form = array();
 
   $form['backgrounduploader'] = array(
-    '#type' => 'fieldset',
-    '#title' => 'Upload Images',
+    '#type'        => 'fieldset',
+    '#title'       => 'Upload Images',
     '#description' => t('This option provides the ability to upload an image to the backgrounds folder. Any image
     in the files/backgrounds folder will be used by the CSS rotator.php file for the background of the site.'),
   );
@@ -43,10 +119,10 @@ function rbim_admin_form($settings) {
   $form['#attributes'] = array('enctype' => "multipart/form-data");
 
   $form['backgrounduploader']['background_image'] = array(
-    '#type' => 'file',
-    '#title' => t('Image Uploader'),
+    '#type'        => 'file',
+    '#title'       => t('Image Uploader'),
     '#description' => t('Use this option to upload an image to the theme background image folder.'),
-    '#maxlength' => 40,
+    '#maxlength'   => 40,
   );
 
   $form['backgrounduploader']['uploadbutton'] = array(
@@ -67,18 +143,18 @@ function rbim_admin_form($settings) {
   }
 
   $form['backgrounds'] = array(
-    '#type' => 'fieldset',
+    '#type'  => 'fieldset',
     '#title' => 'Background Images',
   );
 
   $form['backgrounds']['backgroundfids'] = array(
-    '#type' => 'checkboxes',
+    '#type'    => 'checkboxes',
     '#options' => $options,
   );
 
   $form['backgrounds']['deletebutton'] = array(
-    '#type' => 'submit',
-    '#value' => 'Delete Selected',
+    '#type'   => 'submit',
+    '#value'  => 'Delete Selected',
   );
 
   return $form;
@@ -99,6 +175,7 @@ function rbim_admin_form_submit($form_id, $form_state) {
     foreach ($backgroundfids as $key) {
       if ($backgroundfids[$key]) {
         $file = db_fetch_object(db_query('select * from {files} where fid = %d', $key));
+
         db_query('DELETE FROM {files} WHERE fid = %d', $file->fid);
         file_delete($file->filepath);
       }
@@ -138,11 +215,24 @@ function rbim_get_thumbnail( $file ) {
   return $thumbnailfile;
 }
 
+/**
+ * This implements the hook_init() to place code
+ * early in the page load. This will add the default CSS
+ * and will drop in JS code to enable the rotation of
+ * ground images.
+ */
 function rbim_init() {
 
-  $path = drupal_get_path('module', 'rbim') . '/rbim.css';
-  $media = 'all';
+  $path       = drupal_get_path('module', 'rbim') . '/rbim.css';
+  $media      = 'all';
   $preprocess = FALSE;
 
   drupal_add_css($path, 'theme', $media, $preprocess);
+
+  // This will call the image cycle code. This is manual CSS
+  // Have not added any fade yet.
+  if (variable_get('rbim_enable_jquery', FALSE) == TRUE) {
+    _rbim_jquery_image_cycle();
+  }
+
 }
